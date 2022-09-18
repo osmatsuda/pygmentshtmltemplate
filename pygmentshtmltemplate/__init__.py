@@ -1,21 +1,27 @@
 from pygments.formatters import HtmlFormatter, html
-from pygments.token import Token
+from pygments.token import Token, _TokenType
 from collections.abc import Generator
-import re
+import re, pathlib
+from typing import Any
 
 from . import templates
+from .templates import Template, build_wrap_cssrules
 
-__version__ = "0.0.1c"
+__version__ = "0.0.2"
+__formatter_alias__ = 'fmtr_tmpl'
 
+_OptsVal = str | int | bool | set[int]
+_Opts = dict[str, _OptsVal]
 
 _options_pass_to_HtmlFormatter = (
-    'style', 'full', 'title', 'encoding', 'outencoding',
-    'linenostart', 'hl_lines',
+    'style', 'title', 'filename',
+    'nobackground', 'cssclass', 'classprefix', 'linenostart', 'hl_lines',
+    # 'full', 'noclobber_cssfile', 'cssfile',
 )
 
 class FormatterWithTemplate(HtmlFormatter):
     name = 'FormatterWithTemplate'
-    aliases = ['fmtr_tmpl']
+    aliases = [__formatter_alias__]
 
     def __init__(self, **options) -> None:
         xopts = {}
@@ -24,79 +30,137 @@ class FormatterWithTemplate(HtmlFormatter):
                 xopts[k] = options[k]
         HtmlFormatter.__init__(self, **xopts)
 
-        self._line_counter = 0
-        return
-        tmp_src = options.get('template')
-        if not tmp_src:
-            raise
-        self.template = templates.from_path(tmp_src)
+        self._line_counter = self.linenostart -1
+        tmp_src = options.get('template', '')
+        self.template = templates.from_src(tmp_src)
 
-    def format_token(self, ttype, part) -> str:
+    def get_style_defs(self, arg=None) -> str:
+        rules = self.get_wrap_style_rules(arg)
+        rules += self.get_background_style_defs(arg)
+        rules += self.get_token_style_defs(arg)
+        return '\n'.join(rules)
+
+    def get_wrap_style_rules(self, arg=None) -> list[str]:
+        if self.template.name != 'default':
+            return []
+
+        if arg is None:
+            arg = 'ol'
+        wrap_selector_vals = {
+            'wrap': self.get_css_prefix(arg)(''),
+            'line': 'li',
+            'token': 'code'
+        }
+        for ttype, rules in self.style:
+            if ttype is Token.Name:
+                break
+
+        front_base_color = rules['color'] and html.webify(rules['color']) or None # type:ignore
+        rules = []
+        for sels, decl in build_wrap_cssrules(wrap_selector_vals,
+                                              front_base_color=front_base_color,
+                                              linenostart=self.linenostart -1):
+            rules.append(
+                ', '.join(sels) + '{ ' + '; '.join([
+                    k + ':' + v for k, v in decl.items()
+                ]) + ' }'
+            )
+        return rules
+    
+    def _token_properties(self, ttype: _TokenType) -> _Opts:
+        return {
+            'token_class': self._get_css_classes(ttype), # type:ignore
+            'token_type': '.'.join(ttype)
+        }
+    
+    def format_token(self, ttype: _TokenType, part: str, opts: _Opts) -> str:
         if ttype in Token.Text and re.fullmatch(r'[ \t]*', part):
             return part
-        return f'{ttype}({part})'
-            
-    def format_lines(self, tokensource) -> Generator[str, None, None]:
+        return self.template.render_token(ttype, part, opts | self._token_properties(ttype))
+
+    def format_lines(self, tokensource, opts: _Opts) -> Generator[tuple[str, _Opts], None, None]:
         line = ''
+        if type(opts['linenostart']) is int:
+            self.linecount = opts['linenostart'] -1
+        else:
+            self.linecount = 1
+        
         for ttype, value in tokensource:
             if ttype in Token.Text and value == '\n':
+                _update_options_with_lineno(self.linecount, opts)
+                
                 if re.fullmatch(r'[ \t]*', line):
-                    yield ''
+                    yield '', opts
                 else:
-                    yield line
+                    yield line, opts
                 line = ''
             elif '\n' in value:
                 parts = value.split('\n')
                 for i in range(len(parts) -1):
+                    _update_options_with_lineno(self.linecount, opts)
+                    
                     part = parts[i]
                     if i == 0:
                         if part:
-                            yield line + self.format_token(ttype, part)
+                            yield line + self.format_token(ttype, part, opts), opts
                         else:
-                            yield line
+                            yield line, opts
                     else:
                         if part:
-                            yield self.format_token(ttype, part)
+                            yield self.format_token(ttype, part, opts), opts
                         else:
-                            yield ''
-                line = self.format_token(ttype, parts[i+1])
+                            yield '', opts
+
+                line = self.format_token(ttype, parts[i+1], opts)
             else:
-                line += self.format_token(ttype, value)
+                line += self.format_token(ttype, value, opts)
+
         if line:
-            yield line
+            _update_options_with_lineno(self.linecount, opts)
+            yield line, opts
 
     def format_unencoded(self, tokensource, outfile) -> None:
-        outfile.write('<h1>start</h1>\n<ol>\n')
+        opts = {
+            k:self.__getattribute__(k) for k in _options_pass_to_HtmlFormatter
+        }
+        if not self.title:
+            opts['title'] = _filename_to_title(opts.get('filename', ''))
 
-        self.line_counter = 0
+        outfile.write(self.template.render_lead(opts))
+
         empties: list[str] = []
-        for line in self.format_lines(tokensource):
+        for line, _opts in self.format_lines(tokensource, opts):
             if line:
-                if empties:
-                    while empties:
-                        empty, empties = empties[0], empties[1:]
-                        outfile.write(empty)
-                outfile.write(f'<li data={self.line_counter}>{line}</li>\n')
+                while empties:
+                    outfile.write(empties.pop())
+                outfile.write(self.template.render_line(line, _opts))
             else:
-                empties.append(f'<li data={self.line_counter}></li>\n')
+                empties.insert(0, self.template.render_line('', _opts))
 
-        outfile.write('</ol>\n')
+        outfile.write(self.template.render_trail(opts))
 
     @property
-    def line_counter(self) -> int:
+    def line_count(self) -> int:
         self._line_counter += 1
         return self._line_counter - 1
 
-    @line_counter.setter
-    def line_counter(self, v: int) -> None:
+    @line_count.setter
+    def line_count(self, v: int) -> None:
         self._line_counter = v
-    
 
 
-def debug(tokensource, outfile):
-    outfile.write(f'{__version__}\n')
-    for ttype, value in tokensource:
-        title = '.'.join(ttype)
-        outfile.write(f'<span class="{html._get_ttype_class(ttype)}" title="{title}" data="{ttype}">')
-        outfile.write(html.escape_html(value))
-        outfile.write(f'</span>')
+def _update_options_with_lineno(lineno: int, opts: dict[str, Any]) -> dict[str, Any]:
+    opts['lineno'] = lineno
+    if 'hl_lines' not in opts:
+        opts['highlighted'] = False
+    else:
+        opts['highlighted'] = lineno in opts['hl_lines']
+    return opts
+
+
+def _filename_to_title(filename: str) -> str:
+    if not filename:
+        return ''
+    path = pathlib.Path(filename)
+    return path.name
+

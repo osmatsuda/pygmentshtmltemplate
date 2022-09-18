@@ -1,0 +1,15 @@
+<Pygmentshtmltemplate>
+  <!-- comment -->
+  <h1>${title}</h1>
+  <ol class="${cssclass}">
+    <Line>
+      <li _="${highlighted}" id="line-${lineno}" class="hll"><Tokens/></li>
+      <li id="line-${lineno}"><Tokens/></li>
+    </Line>
+    <Tokens>
+      <code class="${token_class} init"><Token type="Name.Function.Magic" fullmatch="__init__"/></code>
+      <code class="${token_class}" title="${token_type}"><Token/></code>
+    </Tokens>
+  </ol>
+  <p>${filename}</p>
+</Pygmentshtmltemplate>
