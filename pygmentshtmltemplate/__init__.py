@@ -7,8 +7,9 @@ from typing import Any
 from . import templates
 from .templates import Template, build_wrap_cssrules
 
-__version__ = "0.0.2"
-__formatter_alias__ = 'fmtr_tmpl'
+
+__version__ = "0.1.0"
+
 
 _OptsVal = str | int | bool | set[int]
 _Opts = dict[str, _OptsVal]
@@ -21,7 +22,7 @@ _options_pass_to_HtmlFormatter = (
 
 class FormatterWithTemplate(HtmlFormatter):
     name = 'FormatterWithTemplate'
-    aliases = [__formatter_alias__]
+    aliases = ['fmtr_tmpl']
 
     def __init__(self, **options) -> None:
         xopts = {}
@@ -30,7 +31,7 @@ class FormatterWithTemplate(HtmlFormatter):
                 xopts[k] = options[k]
         HtmlFormatter.__init__(self, **xopts)
 
-        self._line_counter = self.linenostart -1
+        self._line_counter = 0
         tmp_src = options.get('template', '')
         self.template = templates.from_src(tmp_src)
 
@@ -76,15 +77,16 @@ class FormatterWithTemplate(HtmlFormatter):
     def format_token(self, ttype: _TokenType, part: str, opts: _Opts) -> str:
         if ttype in Token.Text and re.fullmatch(r'[ \t]*', part):
             return part
-        return self.template.render_token(ttype, part, opts | self._token_properties(ttype))
+        return self.template.render_token(
+            ttype,
+            self._translate_parts(part)[0],
+            opts | self._token_properties(ttype)
+        )
 
     def format_lines(self, tokensource, opts: _Opts) -> Generator[tuple[str, _Opts], None, None]:
         line = ''
-        if type(opts['linenostart']) is int:
-            self.linecount = opts['linenostart'] -1
-        else:
-            self.linecount = 1
-        
+        self.linecount = opts['linenostart']
+
         for ttype, value in tokensource:
             if ttype in Token.Text and value == '\n':
                 _update_options_with_lineno(self.linecount, opts)
@@ -127,7 +129,7 @@ class FormatterWithTemplate(HtmlFormatter):
             opts['title'] = _filename_to_title(opts.get('filename', ''))
 
         outfile.write(self.template.render_lead(opts))
-
+        #import pdb; pdb.set_trace()
         empties: list[str] = []
         for line, _opts in self.format_lines(tokensource, opts):
             if line:
@@ -140,12 +142,12 @@ class FormatterWithTemplate(HtmlFormatter):
         outfile.write(self.template.render_trail(opts))
 
     @property
-    def line_count(self) -> int:
+    def linecount(self) -> int:
         self._line_counter += 1
         return self._line_counter - 1
 
-    @line_count.setter
-    def line_count(self, v: int) -> None:
+    @linecount.setter
+    def linecount(self, v: int) -> None:
         self._line_counter = v
 
 

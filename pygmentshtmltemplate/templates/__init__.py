@@ -99,19 +99,24 @@ WRAP_CSSRULES: list[_Rule] = [
         'white-space': 'pre-wrap',
         'list-style': 'none',
     }),
+    (['${wrap} ${token}'], {
+        'background-color': 'transparent',
+    }),
     (['${wrap} ${line}::before'], {
         'display': 'inline-block',
-        'width': '2.5em',
+        'width': '${leadpadding}em',
         'padding-right': '1em',
         'text-align': 'right',
         'content': 'counter(li)',
         'counter-increment': 'li',
         'font-size': '.8em',
-        'opacity': '.6'
+        'opacity': '.6',
     }),
 ]
 
 def build_wrap_cssrules(selector_vals, **opts) -> list[_Rule]:
+    setback = len(str(opts['linenostart'] + 1)) / 2 + .5
+    opts = opts | {'leadpadding': max(2, setback)}
     results = []
     for sels, decl in WRAP_CSSRULES:
         sels_ = []

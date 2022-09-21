@@ -1,5 +1,6 @@
 import docutils.nodes
 from docutils.parsers.rst import Directive, directives
+from pygments import highlight
 from pygments.lexers import get_lexer_by_name, get_lexer_for_filename
 from pygments.util import ClassNotFound
 import re, pathlib
@@ -9,7 +10,7 @@ from pygmentshtmltemplate import FormatterWithTemplate
 
 class PygHtmlTmplRstDirective(Directive):
     """
-    A syntax highlighting directive for ReST with the Pygments html-formatter
+    A syntax highlighting directive for reST with the Pygments html-formatter
     plugin `pygmentshtmltemplate`.
     This directive pygmetizes contents and passes through that html-tagged code.
     """
@@ -32,10 +33,11 @@ class PygHtmlTmplRstDirective(Directive):
     def run(self):
         opts = {}
         code_fmt = self.arguments[0]
+
         if (idx := code_fmt.find(':')) >= 0:
-            code_fmt = code_fmt[:idx]
             for m in re.finditer(r':([^:]+):\s*([^: ]*)', code_fmt[idx:]):
                 opts[m.group(1)] = m.group(2)
+            code_fmt = code_fmt[:idx].strip()
         if not code_fmt:
             raise self.error('Require a name of language as an argument')
 

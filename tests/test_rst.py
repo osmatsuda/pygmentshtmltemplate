@@ -8,7 +8,7 @@ import unittest
 from pygmentshtmltemplate.docutils import PygHtmlTmplRstDirective
 directives.register_directive('my-pygmetize', PygHtmlTmplRstDirective)
 
-ReST = f'''
+ReST = f'''\
 PygHtmlTmplRstDirective test
 ============================
 
@@ -26,11 +26,14 @@ using a code block
        print(f'hello, {{foo}}!')
 '''
 
-class TestMyRstDirective(unittest.TestCase):
+class TestReSTDirective(unittest.TestCase):
     def test_publish(self):
         curdir = pathlib.Path(__file__).parent
-        with open(curdir / 'outputs/test_rst.py.html', 'wb') as out:
-            out.write(publish_string(
-                ReST,
-                writer=html4css1.Writer(),
-            ))
+        target = curdir / 'outputs/test_rst.py.html'
+        outputs = publish_string(
+            ReST,
+            writer=html4css1.Writer(),
+        )
+        outputs = outputs.replace(b'</head>', b'<link rel="stylesheet" href="style.highlight.css"/>\n</head>', 1)
+        with open(target, 'wb') as out:
+            out.write(outputs)

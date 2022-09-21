@@ -4,4 +4,4 @@ dist
 build
 build.*
 *.egg-info
-
+tests/outputs

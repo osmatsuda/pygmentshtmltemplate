@@ -59,7 +59,7 @@ class TestFormatterMember(unittest.TestCase):
             )
 
     def test_get_style_defs(self):
-        dest = pathlib.Path(__file__).parent / 'resources'
+        dest = pathlib.Path(__file__).parent / 'outputs'
         fmtr = pygments.formatters.get_formatter_by_name('fmtr_tmpl')
         with open(dest / 'style.highlight.css', 'w') as out_hi,\
              open(dest / 'style.ol.css', 'w') as out_ol:
